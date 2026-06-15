@@ -1,0 +1,28 @@
+name: Notify clients on release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Trinity clients
+        env:
+          ADMIN_TOKEN: ${{ secrets.TRINITY_ADMIN_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          NOTES: ${{ github.event.release.body }}
+        run: |
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/Trinity-Setup.exe"
+          BODY=$(jq -n \
+            --arg tag "$TAG" \
+            --arg url "$DOWNLOAD_URL" \
+            --arg notes "$NOTES" \
+            '{tag: $tag, download_url: $url, release_notes: $notes}')
+          echo "Payload: $BODY"
+          curl -sS -L -X POST "https://bot.tiktok-master.com/api/admin/notify-update" \
+            -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$BODY" \
+            --fail-with-body
