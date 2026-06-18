@@ -23,7 +23,7 @@ on:
 
 jobs:
   build-mac:
-    runs-on: macos-13   # Intel x86_64 (compat maximale : Intel + Apple Silicon via Rosetta)
+    runs-on: macos-14   # Apple Silicon (arm64). Couvre tous les Mac M1/M2/M3/M4.
     timeout-minutes: 45
 
     steps:
@@ -61,19 +61,27 @@ jobs:
             "cryptography>=42.0.0" \
             "elevenlabs>=1.10.0"
 
-      - name: Télécharger ffmpeg + ffprobe (macOS statique)
+      - name: Télécharger ffmpeg + ffprobe (macOS Apple Silicon, statique)
         run: |
           set -e
           FFDIR="trinity-saas/packaging/ffmpeg-mac"
           mkdir -p "$FFDIR"
-          echo "Téléchargement ffmpeg (evermeet.cx, build statique x86_64)…"
-          curl -L --retry 3 -o ffmpeg.zip  "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip"
-          curl -L --retry 3 -o ffprobe.zip "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip"
-          unzip -o ffmpeg.zip  -d "$FFDIR"
-          unzip -o ffprobe.zip -d "$FFDIR"
+          BASE="https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release"
+          echo "Téléchargement ffmpeg arm64 (martin-riedl.de, build statique)…"
+          if curl -L --retry 3 -f -o ffmpeg.zip  "$BASE/ffmpeg.zip" \
+             && curl -L --retry 3 -f -o ffprobe.zip "$BASE/ffprobe.zip"; then
+            unzip -o ffmpeg.zip  -d "$FFDIR"
+            unzip -o ffprobe.zip -d "$FFDIR"
+          else
+            echo "Source statique indispo → fallback Homebrew"
+            brew install ffmpeg
+            cp "$(brew --prefix)/bin/ffmpeg"  "$FFDIR/ffmpeg"
+            cp "$(brew --prefix)/bin/ffprobe" "$FFDIR/ffprobe"
+          fi
           chmod +x "$FFDIR/ffmpeg" "$FFDIR/ffprobe"
           echo "--- ffmpeg présent : ---"
           ls -la "$FFDIR"
+          file "$FFDIR/ffmpeg"
           "$FFDIR/ffmpeg" -version | head -1
 
       - name: Build PyInstaller (onedir)
