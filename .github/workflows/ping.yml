@@ -1,0 +1,12 @@
+name: ping-test
+on:
+  workflow_dispatch:
+jobs:
+  ping-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "ubuntu runner OK"
+  ping-mac:
+    runs-on: macos-14
+    steps:
+      - run: echo "macos-14 runner OK"
