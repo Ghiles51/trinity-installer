@@ -1,0 +1,146 @@
+name: Build Trinity macOS (.dmg)
+
+# Fabrique Trinity-Setup.dmg sur un Mac cloud GitHub.
+# Hébergé sur trinity-installer (PUBLIC) → runners macOS gratuits et dispos.
+# Récupère le code depuis les repos PRIVÉS trinity-saas (agent+packaging) et
+# trinity-bot (le bot) via le secret TRINITY_BOT_PAT.
+#
+# Déclenchement : onglet Actions → "Build Trinity macOS (.dmg)" → Run workflow.
+# Le .dmg est dispo en "artifact" + (option) publié dans les Releases de ce repo.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Numéro de version (ex: 1.0.22)"
+        required: true
+        default: "1.0.22"
+      publish_release:
+        description: "Publier aussi dans les Releases (pour les clients) ?"
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  build-mac:
+    runs-on: macos-13   # Intel x86_64 (compat maximale : Intel + Apple Silicon via Rosetta)
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout trinity-saas (agent + packaging, privé)
+        uses: actions/checkout@v4
+        with:
+          repository: Ghiles51/trinity-saas
+          token: ${{ secrets.TRINITY_BOT_PAT }}
+          path: trinity-saas
+
+      - name: Checkout trinity-bot (le bot, privé)
+        uses: actions/checkout@v4
+        with:
+          repository: Ghiles51/trinity-bot
+          token: ${{ secrets.TRINITY_BOT_PAT }}
+          path: trinity-bot
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer les dépendances Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install \
+            requests \
+            "yt-dlp>=2024.10.0" \
+            "Pillow>=10.0.0" \
+            "imagehash>=4.3.1" \
+            "pyyaml>=6.0" \
+            "python-dotenv>=1.0.0" \
+            "flask>=3.0.0" \
+            "cryptography>=42.0.0" \
+            "elevenlabs>=1.10.0"
+
+      - name: Télécharger ffmpeg + ffprobe (macOS statique)
+        run: |
+          set -e
+          FFDIR="trinity-saas/packaging/ffmpeg-mac"
+          mkdir -p "$FFDIR"
+          echo "Téléchargement ffmpeg (evermeet.cx, build statique x86_64)…"
+          curl -L --retry 3 -o ffmpeg.zip  "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip"
+          curl -L --retry 3 -o ffprobe.zip "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip"
+          unzip -o ffmpeg.zip  -d "$FFDIR"
+          unzip -o ffprobe.zip -d "$FFDIR"
+          chmod +x "$FFDIR/ffmpeg" "$FFDIR/ffprobe"
+          echo "--- ffmpeg présent : ---"
+          ls -la "$FFDIR"
+          "$FFDIR/ffmpeg" -version | head -1
+
+      - name: Build PyInstaller (onedir)
+        working-directory: trinity-saas/packaging
+        env:
+          TRINITY_BOT_ROOT: ${{ github.workspace }}/trinity-bot
+        run: |
+          set -e
+          echo "BOT_ROOT = $TRINITY_BOT_ROOT"
+          ls -la "$TRINITY_BOT_ROOT" | head
+          pyinstaller Trinity-Agent-mac.spec --clean --noconfirm
+          echo "--- dist/ ---"
+          ls -la dist/Trinity-Agent | head
+
+      - name: Emballer en Trinity Agent.app
+        working-directory: trinity-saas/packaging
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -e
+          APP="dist/Trinity Agent.app"
+          rm -rf "$APP"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp -R "dist/Trinity-Agent" "$APP/Contents/Resources/Trinity-Agent"
+          cp "mac/trinity-launch" "$APP/Contents/MacOS/trinity-launch"
+          chmod +x "$APP/Contents/MacOS/trinity-launch"
+          sed "s/__VERSION__/${VERSION}/g" "mac/Info.plist" > "$APP/Contents/Info.plist"
+          echo "--- App créée : ---"
+          ls -la "$APP/Contents"
+
+      - name: Créer le .dmg
+        working-directory: trinity-saas/packaging
+        run: |
+          set -e
+          mkdir -p installer
+          STAGE="dmg-stage"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE"
+          cp -R "dist/Trinity Agent.app" "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+          cp "mac/INSTALL-MAC.txt" "$STAGE/LISEZ-MOI.txt" 2>/dev/null || true
+          hdiutil create -volname "Trinity Agent" \
+            -srcfolder "$STAGE" \
+            -ov -format UDZO \
+            "installer/Trinity-Setup.dmg"
+          echo "--- DMG créé : ---"
+          ls -lah installer/Trinity-Setup.dmg
+
+      - name: Upload artifact (.dmg téléchargeable)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Trinity-Setup-dmg
+          path: trinity-saas/packaging/installer/Trinity-Setup.dmg
+          retention-days: 14
+
+      - name: (Optionnel) Publier dans les Releases
+        if: ${{ github.event.inputs.publish_release == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -e
+          cd trinity-saas/packaging/installer
+          TAG="v${VERSION}-mac"
+          gh release create "$TAG" \
+            --repo ${{ github.repository }} \
+            --title "Trinity Mac ${VERSION}" \
+            --notes "Version macOS (non signée — voir LISEZ-MOI dans le .dmg). Build automatique." \
+            Trinity-Setup.dmg \
+          || gh release upload "$TAG" --repo ${{ github.repository }} Trinity-Setup.dmg --clobber
