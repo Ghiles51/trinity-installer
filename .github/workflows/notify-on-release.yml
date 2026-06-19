@@ -7,6 +7,10 @@ on:
 jobs:
   notify:
     runs-on: ubuntu-latest
+    # GARDE-FOU : ne JAMAIS notifier les clients pour une release Mac (tag finissant
+    # par -mac). La distribution Mac est gérée séparément (par OS). Évite de spammer
+    # les clients Windows avec un lien .exe qui n'existe pas dans une release Mac.
+    if: ${{ !endsWith(github.event.release.tag_name, '-mac') }}
     steps:
       - name: Notify Trinity clients
         env:
