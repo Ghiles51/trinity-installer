@@ -23,6 +23,9 @@ on:
         required: false
         default: false
 
+permissions:
+  contents: write
+
 jobs:
   build-mac:
     runs-on: macos-14   # Apple Silicon (arm64). Couvre tous les Mac M1/M2/M3/M4.
