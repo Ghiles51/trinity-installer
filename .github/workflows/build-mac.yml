@@ -201,6 +201,6 @@ jobs:
             --repo ${{ github.repository }} \
             --title "Trinity Mac ${VERSION}" \
             --prerelease \
-            --notes "Version macOS Apple Silicon (non signée — suivre le LISEZ-MOI dans le .dmg). Build automatique." \
+            --notes "Version macOS Apple Silicon. Installation en 1 commande : https://bot.tiktok-master.com/mac" \
             Trinity-Setup.dmg \
           || gh release upload "$TAG" --repo ${{ github.repository }} Trinity-Setup.dmg --clobber
