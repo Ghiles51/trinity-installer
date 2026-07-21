@@ -1,0 +1,36 @@
+name: Verif token admin (temporaire)
+
+# Workflow JETABLE : verifie que le secret TRINITY_ADMIN_TOKEN correspond bien
+# a l'ADMIN_TOKEN pose sur Vercel, en appelant /api/admin/notify-update en
+# mode dry_run (compte les destinataires, N'ENVOIE AUCUN EMAIL).
+# A supprimer une fois la verification faite.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Appel dry-run
+        env:
+          TOKEN: ${{ secrets.TRINITY_ADMIN_TOKEN }}
+        run: |
+          set -e
+          CODE=$(curl -s -o /tmp/out.json -w "%{http_code}" \
+            -X POST "https://bot.tiktok-master.com/api/admin/notify-update/" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $TOKEN" \
+            -d '{"tag":"verif-token","download_url":"https://example.com/x.exe","dry_run":true}')
+          echo "HTTP $CODE"
+          cat /tmp/out.json
+          echo
+          if [ "$CODE" = "401" ]; then
+            echo "::error::Le secret GitHub NE CORRESPOND PAS a l'ADMIN_TOKEN de Vercel."
+            exit 1
+          fi
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Reponse inattendue ($CODE) — a inspecter."
+            exit 1
+          fi
+          echo "OK : les deux tokens sont identiques. Aucun email envoye (dry_run)."
