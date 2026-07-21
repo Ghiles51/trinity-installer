@@ -29,7 +29,7 @@ permissions:
 jobs:
   build-mac:
     runs-on: macos-14   # Apple Silicon (arm64). Couvre tous les Mac M1/M2/M3/M4.
-    timeout-minutes: 45
+    timeout-minutes: 180
 
     steps:
       - name: Checkout trinity-saas (agent + packaging, privé)
@@ -255,7 +255,7 @@ jobs:
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
-            --wait --timeout 30m
+            --wait --timeout 150m
           xcrun stapler staple "$APP"
           xcrun stapler validate "$APP"
 
@@ -320,7 +320,7 @@ jobs:
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
-            --wait --timeout 30m
+            --wait --timeout 150m
           xcrun stapler staple "$DMG"
           xcrun stapler validate "$DMG"
           echo "--- Verdict Gatekeeper ---"
