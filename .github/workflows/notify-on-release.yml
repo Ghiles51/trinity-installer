@@ -11,7 +11,14 @@ jobs:
     # Linux (-linux). Ces distributions sont gérées séparément (par OS) et le mail
     # auto pointe vers un .exe Windows qui n'existe pas dans ces releases. Seules
     # les vraies releases Windows (tag vX.Y.Z sans suffixe) déclenchent l'email.
-    if: ${{ !endsWith(github.event.release.tag_name, '-mac') && !endsWith(github.event.release.tag_name, '-linux') }}
+    # + GARDE-FOU PRE-VERSION : une release marquee "prerelease" sert a tester
+    # sans deranger personne. Sans cette condition, publier une pre-version
+    # Windows envoyait quand meme l'email a tous les clients — l'inverse de ce
+    # qu'on attend d'une publication silencieuse.
+    if: >-
+      ${{ !endsWith(github.event.release.tag_name, '-mac')
+          && !endsWith(github.event.release.tag_name, '-linux')
+          && github.event.release.prerelease == false }}
     steps:
       - name: Notify Trinity clients
         env:
