@@ -7,17 +7,20 @@ on:
 jobs:
   notify:
     runs-on: ubuntu-latest
-    # GARDE-FOU : ne JAMAIS notifier les clients pour une release Mac (-mac) ou
-    # Linux (-linux). Ces distributions sont gérées séparément (par OS) et le mail
-    # auto pointe vers un .exe Windows qui n'existe pas dans ces releases. Seules
-    # les vraies releases Windows (tag vX.Y.Z sans suffixe) déclenchent l'email.
-    # + GARDE-FOU PRE-VERSION : une release marquee "prerelease" sert a tester
-    # sans deranger personne. Sans cette condition, publier une pre-version
-    # Windows envoyait quand meme l'email a tous les clients — l'inverse de ce
-    # qu'on attend d'une publication silencieuse.
+    # QUI RECOIT QUOI :
+    #   tag vX.Y.Z       -> clients Windows (+ ceux dont l'OS est inconnu :
+    #                       licences anterieures a la colonne os, donc
+    #                       forcement Windows) + lien vers le .exe
+    #   tag vX.Y.Z-mac   -> clients Mac uniquement + lien vers le .dmg
+    #   tag *-linux      -> personne (aucun canal dedie)
+    # Un client Mac ne doit jamais recevoir une annonce pointant un .exe,
+    # et inversement : c'est tout l'objet du ciblage (TARGET_OS plus bas).
+    #
+    # GARDE-FOU PRE-VERSION : une release "prerelease" sert a tester sans
+    # deranger personne. Sans cette condition, publier une pre-version
+    # envoyait quand meme l'email a tous les clients.
     if: >-
-      ${{ !endsWith(github.event.release.tag_name, '-mac')
-          && !endsWith(github.event.release.tag_name, '-linux')
+      ${{ !endsWith(github.event.release.tag_name, '-linux')
           && github.event.release.prerelease == false }}
     steps:
       - name: Notify Trinity clients
@@ -26,12 +29,21 @@ jobs:
           TAG: ${{ github.event.release.tag_name }}
           NOTES: ${{ github.event.release.body }}
         run: |
-          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/Trinity-Setup.exe"
+          # Tag en -mac => release Mac : on cible les clients Mac et on
+          # pointe le .dmg. Sinon => release Windows : clients Windows (et
+          # ceux dont l'OS est inconnu, anterieurs a la colonne os) + .exe.
+          case "$TAG" in
+            *-mac) TARGET_OS="mac";     ASSET="Trinity-Setup.dmg" ;;
+            *)     TARGET_OS="windows"; ASSET="Trinity-Setup.exe" ;;
+          esac
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${ASSET}"
+          echo "Cible : $TARGET_OS"
           BODY=$(jq -n \
             --arg tag "$TAG" \
             --arg url "$DOWNLOAD_URL" \
             --arg notes "$NOTES" \
-            '{tag: $tag, download_url: $url, release_notes: $notes}')
+            --arg os "$TARGET_OS" \
+            '{tag: $tag, download_url: $url, release_notes: $notes, os: $os}')
           echo "Payload: $BODY"
           curl -sS -L -X POST "https://bot.tiktok-master.com/api/admin/notify-update" \
             -H "Authorization: Bearer ${ADMIN_TOKEN}" \
