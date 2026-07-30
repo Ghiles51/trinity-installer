@@ -1,0 +1,84 @@
+name: Renvoyer l'email d'installation a un client
+
+# POURQUOI CE WORKFLOW
+# L'endpoint /api/admin/license-update exige le ADMIN_TOKEN. Or cette variable
+# est marquee "Sensitive" sur Vercel : elle est en ECRITURE SEULE, donc plus
+# personne ne peut la relire — ni le tableau de bord, ni `vercel env pull`.
+# Le secret TRINITY_ADMIN_TOKEN de ce depot contient la meme valeur (c'est lui
+# qui envoie les emails de release). Ce workflow s'en sert sans jamais l'exposer.
+#
+# A QUOI CA SERT
+# Renvoyer a un client l'email de LIVRAISON (sa cle + les etapes d'installation
+# adaptees a son OS). A ne pas confondre avec l'email de "nouvelle version", qui
+# part tout seul a chaque release et qui parle de remplacer l'ancienne version —
+# incomprehensible pour quelqu'un qui n'a jamais rien installe.
+#
+# GARDE-FOUS
+# - L'endpoint ne CREE jamais de licence : un email inconnu renvoie 404.
+# - Il n'ecrit aucun marqueur anti-doublon, donc il est rejouable sans risque.
+# - Les cles de licence sont masquees dans le journal (voir plus bas).
+
+on:
+  workflow_dispatch:
+    inputs:
+      emails:
+        description: "Emails du/des client(s), separes par des espaces ou des virgules"
+        required: true
+        type: string
+      os:
+        description: "Quelle version d'installation envoyer"
+        required: true
+        default: "mac"
+        type: choice
+        options:
+          - mac
+          - windows
+          - both
+
+jobs:
+  resend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Renvoyer l'email de livraison
+        env:
+          ADMIN_TOKEN: ${{ secrets.TRINITY_ADMIN_TOKEN }}
+          EMAILS: ${{ inputs.emails }}
+          TARGET_OS: ${{ inputs.os }}
+        run: |
+          set -u
+          if [ -z "${ADMIN_TOKEN}" ]; then
+            echo "::error::Le secret TRINITY_ADMIN_TOKEN est vide sur ce depot."
+            exit 1
+          fi
+
+          echo "Version envoyee : ${TARGET_OS}"
+          echo
+          failures=0
+          count=0
+
+          # Virgules et points-virgules acceptes : on colle une liste sans se
+          # soucier du separateur.
+          for mail in $(echo "${EMAILS}" | tr ',;' '  '); do
+            count=$((count + 1))
+            echo "── ${mail}"
+            http=$(curl -sS -o /tmp/reponse.json -w '%{http_code}' \
+              -X POST "https://bot.tiktok-master.com/api/admin/license-update/" \
+              -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{\"email\":\"${mail}\",\"resend_email\":true,\"email_os\":\"${TARGET_OS}\"}") \
+              || { echo "   reseau injoignable"; failures=$((failures + 1)); continue; }
+
+            # Le journal d'une Action est lisible par tout collaborateur du depot :
+            # on ne laisse pas les cles de licence des clients en clair dedans.
+            sed -E 's/(TRTY|NEO)-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}/\1-****-****-****/g' /tmp/reponse.json
+            echo
+
+            if [ "${http}" != "200" ]; then
+              echo "   ECHEC (HTTP ${http})"
+              failures=$((failures + 1))
+            fi
+          done
+
+          echo
+          echo "Traites : ${count} — echecs : ${failures}"
+          [ "${failures}" -eq 0 ]
