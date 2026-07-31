@@ -272,16 +272,20 @@ jobs:
           brew install create-dmg || true
           if command -v create-dmg >/dev/null; then
             # DMG habillé : fond guide + icônes positionnées + icône volume.
+            # Fenêtre 500 px de haut (et fond agrandi d'autant) : à 400 px, le
+            # LISEZ-MOI posé à y=322 avec des icônes de 110 px tombait sur le
+            # bord bas, coupé — personne ne l'a jamais vu. Il est maintenant
+            # centré sous les deux icônes, dans la zone visible.
             create-dmg \
               --volname "Trinity Agent" \
               --volicon "mac/trinity.icns" \
               --background "mac/dmg-background.png" \
               --window-pos 200 120 \
-              --window-size 660 400 \
+              --window-size 660 500 \
               --icon-size 110 \
               --icon "Trinity Agent.app" 170 205 \
               --app-drop-link 490 205 \
-              --icon "LISEZ-MOI.txt" 545 322 \
+              --icon "LISEZ-MOI.txt" 330 380 \
               --hide-extension "LISEZ-MOI.txt" \
               --no-internet-enable \
               "installer/Trinity-Setup.dmg" \
