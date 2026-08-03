@@ -1,0 +1,114 @@
+name: Emettre une nouvelle licence
+
+# POURQUOI CE WORKFLOW
+# Meme raison que admin-resend-install.yml : l'endpoint /api/admin/issue exige
+# le ADMIN_TOKEN, marque "Sensitive" sur Vercel donc en ECRITURE SEULE. Plus
+# personne ne peut le relire (ni le tableau de bord, ni `vercel env pull`).
+# Le secret TRINITY_ADMIN_TOKEN de ce depot contient la meme valeur.
+#
+# DIFFERENCE AVEC admin-resend-install.yml
+# - resend-install : le client a DEJA une licence, on lui renvoie son email.
+# - celui-ci       : on CREE une licence (cadeau, testeur, achat hors Mollie)
+#                    et on envoie l'email de livraison J0.
+#
+# GARDE-FOUS
+# - L'endpoint ne dedoublonne PAS : chaque lancement cree une cle de plus pour
+#   cet email. Verifier d'abord si le client en a deja une.
+# - La cle emise est masquee dans le journal (voir le sed plus bas).
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email du client"
+        required: true
+        type: string
+      first_name:
+        description: "Prenom affiche dans l'email (« Bonjour ___ »)"
+        required: true
+        default: "Client"
+        type: string
+      os:
+        description: "Quelle version d'installation presenter dans l'email"
+        required: true
+        default: "windows"
+        type: choice
+        options:
+          - windows
+          - mac
+          - both
+      edition:
+        description: "Duree de la licence"
+        required: true
+        default: "annual"
+        type: choice
+        options:
+          - annual
+          - lifetime
+      bot:
+        description: "Produit"
+        required: true
+        default: "trinity"
+        type: choice
+        options:
+          - trinity
+          - neo
+          - morpheus
+
+jobs:
+  issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Emettre la licence et envoyer l'email de livraison
+        env:
+          ADMIN_TOKEN: ${{ secrets.TRINITY_ADMIN_TOKEN }}
+          EMAIL: ${{ inputs.email }}
+          FIRST_NAME: ${{ inputs.first_name }}
+          TARGET_OS: ${{ inputs.os }}
+          EDITION: ${{ inputs.edition }}
+          BOT: ${{ inputs.bot }}
+        run: |
+          set -u
+          if [ -z "${ADMIN_TOKEN}" ]; then
+            echo "::error::Le secret TRINITY_ADMIN_TOKEN est vide sur ce depot."
+            exit 1
+          fi
+
+          echo "Client   : ${EMAIL} (${FIRST_NAME})"
+          echo "Produit  : ${BOT} — ${EDITION} — email ${TARGET_OS}"
+          echo
+
+          # jq construit le JSON : le prenom peut contenir accents, espaces ou
+          # apostrophes, qu'une interpolation shell casserait.
+          jq -n \
+            --arg email "${EMAIL}" \
+            --arg first_name "${FIRST_NAME}" \
+            --arg bot "${BOT}" \
+            --arg edition "${EDITION}" \
+            --arg os "${TARGET_OS}" \
+            '{email:$email, first_name:$first_name, bot:$bot, edition:$edition, os:$os, send_email:true}' \
+            > /tmp/corps.json
+
+          http=$(curl -sS -o /tmp/reponse.json -w '%{http_code}' \
+            -X POST "https://bot.tiktok-master.com/api/admin/issue" \
+            -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data-binary @/tmp/corps.json) \
+            || { echo "::error::reseau injoignable"; exit 1; }
+
+          # Le journal d'une Action est lisible par tout collaborateur du depot :
+          # on ne laisse pas la cle de licence en clair dedans.
+          sed -E 's/(TRTY|NEO)-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}/\1-****-****-****/g' /tmp/reponse.json
+          echo
+
+          if [ "${http}" != "200" ]; then
+            echo "::error::ECHEC (HTTP ${http})"
+            exit 1
+          fi
+
+          if [ "$(jq -r '.email_sent' /tmp/reponse.json)" != "true" ]; then
+            echo "::error::La licence est creee mais l'email N'EST PAS parti."
+            exit 1
+          fi
+
+          echo "Licence creee et email de livraison envoye."
