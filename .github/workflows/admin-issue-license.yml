@@ -89,7 +89,10 @@ jobs:
             '{email:$email, first_name:$first_name, bot:$bot, edition:$edition, os:$os, send_email:true}' \
             > /tmp/corps.json
 
-          http=$(curl -sS -o /tmp/reponse.json -w '%{http_code}' \
+          # -L obligatoire : `trailingSlash: true` dans vercel.json renvoie un
+          # 308 vers /api/admin/issue/. Un 308 conserve la methode POST et le
+          # corps, et l'hote ne change pas donc l'en-tete Authorization suit.
+          http=$(curl -sS -L -o /tmp/reponse.json -w '%{http_code}' \
             -X POST "https://bot.tiktok-master.com/api/admin/issue" \
             -H "Authorization: Bearer ${ADMIN_TOKEN}" \
             -H "Content-Type: application/json" \
