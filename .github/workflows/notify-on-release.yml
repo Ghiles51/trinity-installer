@@ -19,9 +19,24 @@ jobs:
     # GARDE-FOU PRE-VERSION : une release "prerelease" sert a tester sans
     # deranger personne. Sans cette condition, publier une pre-version
     # envoyait quand meme l'email a tous les clients.
+    #
+    # 🚨 15/09 — L'EXCEPTION MAC, ET POURQUOI ELLE EST INDISPENSABLE.
+    # Les releases Mac sont TOUJOURS publiees en pre-version, volontairement :
+    # c'est ce qui les empeche de voler le badge "Latest" au .exe Windows
+    # (voir build-mac.yml). Combine au garde-fou ci-dessus, ca donnait un trou
+    # que personne n'avait vu : AUCUN CLIENT MAC N'A JAMAIS RECU D'EMAIL DE
+    # MISE A JOUR. Dix licences actives sur vingt-cinq, dont les trois eleves
+    # qui se plaignaient cette semaine que "rien n'arrive" — ils avaient
+    # raison, et on leur repondait d'installer une mise a jour qu'ils ne
+    # pouvaient pas connaitre.
+    #
+    # Deux protections justes qui, mises bout a bout, fabriquent une panne.
+    # On garde donc le garde-fou pour les vraies pre-versions de test, et on
+    # l'ouvre pour les tags -mac, qui sont des releases CLIENTS a part entiere.
     if: >-
       ${{ !endsWith(github.event.release.tag_name, '-linux')
-          && github.event.release.prerelease == false }}
+          && (github.event.release.prerelease == false
+              || endsWith(github.event.release.tag_name, '-mac')) }}
     steps:
       - name: Notify Trinity clients
         env:
