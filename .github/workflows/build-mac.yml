@@ -341,6 +341,15 @@ jobs:
         if: ${{ github.event.inputs.publish_release == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 16/09 — LE JETON QUI DECLENCHE L'EMAIL.
+          # GitHub interdit qu'un evenement cree avec GITHUB_TOKEN declenche un
+          # AUTRE workflow (protection anti-boucle). La release Mac etait creee
+          # avec lui : notify-on-release ne voyait donc JAMAIS passer les tags
+          # -mac, meme apres l'ouverture du garde-fou le 15/09. Les emails Mac
+          # du 15 et du 16 ne sont partis que parce qu'on a republie la release
+          # A LA MAIN — ce qui, par definition, ne se refait pas tout seul.
+          # Un jeton personnel (PAT), lui, declenche les workflows.
+          PAT_RELEASE: ${{ secrets.TRINITY_BOT_PAT }}
           VERSION: ${{ github.event.inputs.version }}
         run: |
           set -e
@@ -365,10 +374,22 @@ jobs:
           if [ -z "$NOTES" ]; then
             NOTES="Version macOS Apple Silicon. Installation en 1 commande : https://bot.tiktok-master.com/mac"
           fi
-          gh release create "$TAG" \
-            --repo ${{ github.repository }} \
-            --title "Trinity Mac ${VERSION}" \
-            --prerelease \
-            --notes "$NOTES" \
-            Trinity-Setup.dmg \
-          || gh release upload "$TAG" --repo ${{ github.repository }} Trinity-Setup.dmg --clobber
+          # On publie d'abord avec le PAT, pour que l'email parte tout seul.
+          # S'il n'a pas les droits (ou s'il a expire), on retombe sur
+          # GITHUB_TOKEN : la version sort quand meme — mais on le crie dans les
+          # logs, parce qu'alors les clients Mac ne seront PAS prevenus.
+          publier() {
+            gh release create "$TAG" \
+              --repo ${{ github.repository }} \
+              --title "Trinity Mac ${VERSION}" \
+              --prerelease \
+              --notes "$NOTES" \
+              Trinity-Setup.dmg
+          }
+          if [ -n "$PAT_RELEASE" ] && GH_TOKEN="$PAT_RELEASE" publier; then
+            echo "Release Mac publiee avec le PAT : l'email partira automatiquement."
+          elif publier; then
+            echo "::warning::Release Mac publiee avec GITHUB_TOKEN (PAT indisponible). AUCUN EMAIL ne partira aux clients Mac : republier la release a la main pour les prevenir."
+          else
+            gh release upload "$TAG" --repo ${{ github.repository }} Trinity-Setup.dmg --clobber
+          fi
