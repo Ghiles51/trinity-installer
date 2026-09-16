@@ -346,12 +346,29 @@ jobs:
           set -e
           cd trinity-saas/packaging/installer
           TAG="v${VERSION}-mac"
-          # --prerelease OBLIGATOIRE : ne vole pas "Latest" au .exe Windows
-          # et le garde-fou notify-on-release skip les tags -mac (zéro email).
+          # --prerelease OBLIGATOIRE : ne vole pas "Latest" au .exe Windows.
+          #
+          # 16/09 — LES CLIENTS MAC RECEVAIENT DES NOTES VIDES DE SENS.
+          # Le commentaire d'origine disait « notify-on-release skip les tags
+          # -mac (zero email) ». C'etait vrai, et c'etait un TROU, pas une
+          # volonte : aucun client Mac (10 licences actives sur 25) n'avait
+          # jamais ete prevenu d'une mise a jour. Le garde-fou a ete ouvert pour
+          # les tags -mac le 15/09.
+          # Mais les notes publiees ici etaient generiques (« Version macOS
+          # Apple Silicon »). Maintenant que l'email part, c'est CE texte que
+          # le client Mac lirait — au lieu des nouveautes.
+          #
+          # On reprend donc les notes de la release Windows du meme numero,
+          # publiee AVANT le lancement de ce build. Faute de mieux, on garde le
+          # texte d'installation.
+          NOTES=$(gh release view "v${VERSION}" --repo ${{ github.repository }} --json body -q .body 2>/dev/null || true)
+          if [ -z "$NOTES" ]; then
+            NOTES="Version macOS Apple Silicon. Installation en 1 commande : https://bot.tiktok-master.com/mac"
+          fi
           gh release create "$TAG" \
             --repo ${{ github.repository }} \
             --title "Trinity Mac ${VERSION}" \
             --prerelease \
-            --notes "Version macOS Apple Silicon. Installation en 1 commande : https://bot.tiktok-master.com/mac" \
+            --notes "$NOTES" \
             Trinity-Setup.dmg \
           || gh release upload "$TAG" --repo ${{ github.repository }} Trinity-Setup.dmg --clobber
